@@ -153,21 +153,28 @@ export default function WorkoutDashboard({ session }) {
         ))}
       </div>
 
-      {/* MUSCLE MODAL */}
-      <AnimatePresence>
-        {selectedMuscles && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/90 backdrop-blur-md z-[70] flex items-center justify-center p-6">
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="glass-card w-full max-w-xs p-8 text-center border-emerald-500/30">
-              <div className="flex justify-between mb-6">
-                <div className="text-left"><h2 className="text-xl font-black italic uppercase text-white">{selectedMuscles.name}</h2><p className="text-emerald-500 text-[10px] font-black uppercase">Anatomy</p></div>
-                <button onClick={() => setSelectedMuscles(null)}><X size={20}/></button>
-              </div>
-              <p className="text-zinc-300 text-sm italic font-bold mb-6">{selectedMuscles.list}</p>
-              <button onClick={() => setSelectedMuscles(null)} className="w-full py-4 bg-emerald-500 text-emerald-950 rounded-xl text-[10px] font-black uppercase">Close</button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+   {/* MUSCLE MODAL */}
+<AnimatePresence>
+  {selectedMuscles && (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/90 backdrop-blur-md z-[70] flex items-center justify-center p-6">
+      <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="glass-card w-full max-w-xs p-8 text-center border-emerald-500/30">
+        <div className="flex justify-center mb-6">
+          <div className="p-4 bg-emerald-500/10 rounded-full border border-emerald-500/20">
+            <Target size={40} className="text-emerald-500 animate-pulse" />
+          </div>
+        </div>
+        <h2 className="text-xl font-black italic uppercase text-white mb-2">{selectedMuscles.name}</h2>
+        <p className="text-emerald-500 text-[10px] font-black uppercase tracking-[0.2em] mb-4">Primary Drivers</p>
+        <p className="text-zinc-300 text-sm italic font-bold mb-8 bg-white/5 p-4 rounded-xl border border-white/5">
+          {selectedMuscles.list}
+        </p>
+        <button onClick={() => setSelectedMuscles(null)} className="w-full py-4 bg-emerald-500 text-emerald-950 rounded-xl text-[10px] font-black uppercase">
+          Back to Training
+        </button>
+      </motion.div>
+    </motion.div>
+  )}
+</AnimatePresence>
 
       {/* TIMER */}
       <AnimatePresence>{showTimer && <RestTimer duration={restDuration} onFinished={() => setShowTimer(false)} onCancel={() => setShowTimer(false)} />}</AnimatePresence>
