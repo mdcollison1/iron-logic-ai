@@ -1,6 +1,7 @@
 {
   "short_name": "Iron Logic",
   "name": "Iron Logic AI Strength Coach",
+  "categories": ["fitness", "sports", "health"],
   "icons": [
     {
       "src": "icon.png",
@@ -13,4 +14,5 @@
   "display": "standalone",
   "theme_color": "#10b981",
   "background_color": "#09090b"
+  
 }

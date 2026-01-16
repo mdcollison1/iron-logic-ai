@@ -1,183 +1,195 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import { Check, Plus, Target, ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle2, Calendar, Clock, Target, X, ChevronLeft, ChevronRight } from 'lucide-react';
-import RestTimer from './RestTimer';
-import confetti from 'canvas-confetti';
 
 export default function WorkoutDashboard({ session }) {
   const [workout, setWorkout] = useState([]);
-  const [lastWeekData, setLastWeekData] = useState({});
-  const [currentWeek, setCurrentWeek] = useState(1);
-  const [currentDay, setCurrentDay] = useState(1);
-  const [showTimer, setShowTimer] = useState(false);
-  const [restDuration, setRestDuration] = useState(90);
+  const [loading, setLoading] = useState(true);
+  const [currentDayIndex, setCurrentDayIndex] = useState(0);
   const [selectedMuscles, setSelectedMuscles] = useState(null);
+  
+  // NEW: State for tracking set completion and extra sets
+  const [completedSets, setCompletedSets] = useState({});
+  const [extraSets, setExtraSets] = useState({});
 
-  // Audio Reference for PR
-  const prAudioRef = useRef(new Audio("https://www.myinstants.com/media/sounds/ronnie-coleman-yeah-buddy.mp3"));
-
-  const dayNames = { 1: "Mon", 2: "Tue", 3: "Thu", 4: "Fri" };
-  const dayFocus = { 1: "Chest & Core", 2: "Legs", 3: "Back & Cardio", 4: "Shoulders & Arms" };
-
-  useEffect(() => { 
-    fetchWorkout();
-    if (currentWeek > 1) fetchLastWeek();
-  }, [currentWeek, currentDay]);
+  useEffect(() => {
+    if (session) fetchWorkout();
+  }, [session]);
 
   const fetchWorkout = async () => {
-    const { data } = await supabase
-      .from('workout_plans')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .eq('week_number', currentWeek)
-      .eq('day_number', currentDay)
-      .order('id', { ascending: true })
-      .order('set_number', { ascending: true });
-    if (data) setWorkout(data);
-  };
+    try {
+      const { data, error } = await supabase
+        .from('workout_plans')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('week', { ascending: true })
+        .order('day_number', { ascending: true });
 
-  const fetchLastWeek = async () => {
-    const { data } = await supabase
-      .from('workout_plans')
-      .select('exercise_name, set_number, actual_weight_lb')
-      .eq('user_id', session.user.id)
-      .eq('week_number', currentWeek - 1)
-      .eq('day_number', currentDay);
-    if (data) {
-      const historyMap = data.reduce((acc, row) => {
-        acc[`${row.exercise_name}-Set${row.set_number}`] = row.actual_weight_lb;
-        return acc;
-      }, {});
-      setLastWeekData(historyMap);
+      if (error) throw error;
+      setWorkout(data || []);
+    } catch (error) {
+      console.error('Error:', error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleUpdate = async (id, field, value) => {
-    setWorkout(prev => prev.map(row => row.id === id ? { ...row, [field]: value } : row));
-    await supabase.from('workout_plans').update({ [field]: value }).eq('id', id);
-  };
+  // NEW: Toggle logic with sound trigger
+  const toggleSet = (exerciseId, setIndex, isLastSet) => {
+    const key = `${exerciseId}-${setIndex}`;
+    const isNowCompleted = !completedSets[key];
+    
+    setCompletedSets(prev => ({ ...prev, [key]: isNowCompleted }));
 
-  const markComplete = async (set) => {
-    // PR DETECTION LOGIC
-    const prevWeight = lastWeekData[`${set.exercise_name}-Set${set.set_number}`];
-    const currentWeight = parseFloat(set.actual_weight_lb);
-
-    if (prevWeight && currentWeight > prevWeight) {
-      prAudioRef.current.play().catch(() => {});
-      confetti({
-        particleCount: 150,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#10b981', '#ffffff', '#3b82f6']
-      });
-      if ("vibrate" in navigator) navigator.vibrate([100, 50, 100, 50, 300]);
+    if (isNowCompleted && isLastSet) {
+      const audio = new Audio('/sounds/lightweight.mp3');
+      audio.play().catch(e => console.log("Audio waiting for user interaction"));
     }
-
-    // Update State & DB
-    setWorkout(prev => prev.map(row => row.id === set.id ? { ...row, is_completed: true } : row));
-    setShowTimer(false);
-    setTimeout(() => setShowTimer(true), 100);
-    await supabase.from('workout_plans').update({ is_completed: true }).eq('id', set.id);
   };
 
-  const groupedExercises = workout.reduce((acc, row) => {
-    if (!acc[row.exercise_name]) acc[row.exercise_name] = [];
-    acc[row.exercise_name].push(row);
-    return acc;
-  }, {});
+  // NEW: Add extra set logic
+  const addSet = (exerciseId) => {
+    setExtraSets(prev => ({
+      ...prev,
+      [exerciseId]: (prev[exerciseId] || 0) + 1
+    }));
+  };
+
+  if (loading) return <div className="text-center p-10 text-zinc-500 font-black animate-pulse">SYNCHRONIZING PROTOCOL...</div>;
+  if (workout.length === 0) return null;
+
+  const currentDay = workout[currentDayIndex];
+  const exercises = JSON.parse(currentDay?.exercises || '[]');
 
   return (
-    <div className="pb-32">
-      {/* CALENDAR NAVIGATION */}
-      <div className="glass-card p-4 mb-6 border-b border-emerald-500/10">
-        <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Weekly Schedule</h3>
-            <div className="flex items-center gap-2">
-                <button onClick={() => setCurrentWeek(w => Math.max(1, w-1))}><ChevronLeft size={16}/></button>
-                <span className="text-xs font-bold text-white uppercase tracking-widest">Week {currentWeek}</span>
-                <button onClick={() => setCurrentWeek(w => Math.min(12, w+1))}><ChevronRight size={16}/></button>
-            </div>
-        </div>
-        <div className="grid grid-cols-4 gap-2">
-          {[1, 2, 3, 4].map(d => (
-            <button key={d} onClick={() => setCurrentDay(d)}
-                className={`p-3 rounded-xl border transition-all flex flex-col items-center ${currentDay === d ? 'bg-emerald-500 border-emerald-400 text-emerald-950' : 'bg-white/5 border-white/5 text-zinc-500'}`}>
-              <span className="text-[10px] font-black">{dayNames[d]}</span>
-              <span className="text-[8px] font-bold truncate w-full text-center">{dayFocus[d].split(' ')[0]}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* WORKOUT HEADER */}
-      <div className="mb-8 px-2 flex justify-between items-end">
-        <div>
-            <h2 className="text-2xl font-black italic uppercase text-white leading-none tracking-tighter">{dayFocus[currentDay]}</h2>
-            <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/10 mt-3">
-                <Clock size={12} className="text-emerald-500" />
-                <select className="bg-transparent text-[10px] font-bold text-white outline-none" value={restDuration} onChange={(e) => setRestDuration(Number(e.target.value))}>
-                    <option value={60}>60s Rest</option>
-                    <option value={90}>90s Rest</option>
-                    <option value={120}>120s Rest</option>
-                </select>
-            </div>
-        </div>
-      </div>
-
-      {/* EXERCISE CARDS */}
-      <div className="space-y-6">
-        {Object.entries(groupedExercises).map(([name, sets]) => (
-          <div key={name} className="glass-card overflow-hidden">
-            <div className="bg-white/5 px-5 py-3 border-b border-white/5 flex justify-between items-center">
-                <h3 className="text-white font-bold text-sm uppercase italic">{name}</h3>
-                <button onClick={() => setSelectedMuscles({ name, list: sets[0].muscles || "Full Body" })} className="text-emerald-500/50 hover:text-emerald-500"><Target size={18} /></button>
-            </div>
-            <div className="p-4 space-y-3">
-              {sets.map((set) => {
-                const prevWeight = lastWeekData[`${name}-Set${set.set_number}`];
-                return (
-                  <div key={set.id} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${set.is_completed ? 'bg-emerald-500/5 opacity-40' : 'bg-white/5 border border-white/5'}`}>
-                    <div className="w-12">
-                      <p className="text-[9px] font-black text-zinc-500 uppercase">Set {set.set_number}</p>
-                      {prevWeight && <p className="text-[8px] text-emerald-400 font-mono italic">LW: {prevWeight}lb</p>}
-                    </div>
-                    <input type="number" placeholder={`${set.target_weight_lb}lb`} className="w-16 bg-black/40 border border-white/10 rounded-lg p-2 text-xs text-emerald-400 font-mono outline-none" value={set.actual_weight_lb || ''} onChange={(e) => handleUpdate(set.id, 'actual_weight_lb', e.target.value)} />
-                    <input type="text" placeholder={set.target_reps} className="w-16 bg-black/40 border border-white/10 rounded-lg p-2 text-xs text-white font-mono outline-none" value={set.actual_reps || ''} onChange={(e) => handleUpdate(set.id, 'actual_reps', e.target.value)} />
-                    <button onClick={() => markComplete(set)} className={`ml-auto ${set.is_completed ? 'text-emerald-500' : 'text-zinc-800'}`}><CheckCircle2 size={28} /></button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-
-   {/* MUSCLE MODAL */}
-<AnimatePresence>
-  {selectedMuscles && (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/90 backdrop-blur-md z-[70] flex items-center justify-center p-6">
-      <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="glass-card w-full max-w-xs p-8 text-center border-emerald-500/30">
-        <div className="flex justify-center mb-6">
-          <div className="p-4 bg-emerald-500/10 rounded-full border border-emerald-500/20">
-            <Target size={40} className="text-emerald-500 animate-pulse" />
-          </div>
-        </div>
-        <h2 className="text-xl font-black italic uppercase text-white mb-2">{selectedMuscles.name}</h2>
-        <p className="text-emerald-500 text-[10px] font-black uppercase tracking-[0.2em] mb-4">Primary Drivers</p>
-        <p className="text-zinc-300 text-sm italic font-bold mb-8 bg-white/5 p-4 rounded-xl border border-white/5">
-          {selectedMuscles.list}
-        </p>
-        <button onClick={() => setSelectedMuscles(null)} className="w-full py-4 bg-emerald-500 text-emerald-950 rounded-xl text-[10px] font-black uppercase">
-          Back to Training
+    <div className="space-y-6">
+      {/* NAVIGATION HEADER */}
+      <div className="flex items-center justify-between mb-8 bg-zinc-900/50 p-2 rounded-2xl border border-white/5">
+        <button 
+          onClick={() => setCurrentDayIndex(Math.max(0, currentDayIndex - 1))}
+          className="p-3 text-emerald-500 disabled:opacity-20"
+          disabled={currentDayIndex === 0}
+        >
+          <ChevronLeft size={24} />
         </button>
-      </motion.div>
-    </motion.div>
-  )}
-</AnimatePresence>
+        
+        <div className="text-center">
+          <p className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em]">Week {currentDay.week} • Day {currentDay.day_number}</p>
+          <h2 className="text-xl font-black italic uppercase text-white">{currentDay.focus}</h2>
+        </div>
 
-      {/* TIMER */}
-      <AnimatePresence>{showTimer && <RestTimer duration={restDuration} onFinished={() => setShowTimer(false)} onCancel={() => setShowTimer(false)} />}</AnimatePresence>
+        <button 
+          onClick={() => setCurrentDayIndex(Math.min(workout.length - 1, currentDayIndex + 1))}
+          className="p-3 text-emerald-500 disabled:opacity-20"
+          disabled={currentDayIndex === workout.length - 1}
+        >
+          <ChevronRight size={24} />
+        </button>
+      </div>
+
+      {/* EXERCISE LIST */}
+      <div className="space-y-4">
+        {exercises.map((ex, idx) => {
+          const exerciseId = `${currentDay.id}-${idx}`;
+          const totalSets = (ex.sets || 0) + (extraSets[exerciseId] || 0);
+
+          return (
+            <div key={idx} className="glass-card overflow-hidden border-white/5">
+              <div className="p-5">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-lg font-black italic uppercase text-white leading-tight">{ex.name}</h3>
+                    <p className="text-emerald-500 font-mono text-sm">{ex.weight} LBS • {ex.reps} REPS</p>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedMuscles({ name: ex.name, list: ex.muscles || 'Target Muscles' })}
+                    className="p-2 bg-white/5 rounded-lg text-zinc-400 hover:text-emerald-500"
+                  >
+                    <Info size={18} />
+                  </button>
+                </div>
+
+                {/* THE SETS GRID (UPDATED) */}
+                <div className="space-y-2">
+                  {[...Array(totalSets)].map((_, i) => {
+                    const isCompleted = completedSets[`${exerciseId}-${i}`];
+                    const isLast = i === totalSets - 1;
+
+                    return (
+                      <div 
+                        key={i} 
+                        onClick={() => toggleSet(exerciseId, i, isLast)}
+                        className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                          isCompleted 
+                            ? 'bg-emerald-500/20 border-emerald-500/50' 
+                            : 'bg-white/5 border-white/10 hover:border-white/20'
+                        }`}
+                      >
+                        <span className={`text-xs font-black uppercase tracking-widest ${isCompleted ? 'text-emerald-500' : 'text-zinc-500'}`}>
+                          SET {i + 1}
+                        </span>
+                        <div className={`p-1 rounded-md transition-all ${isCompleted ? 'bg-emerald-500 text-black scale-110' : 'bg-zinc-800 text-zinc-600'}`}>
+                          <Check size={14} strokeWidth={4} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  {/* ADD SET BUTTON */}
+                  <button 
+                    onClick={() => addSet(exerciseId)}
+                    className="w-full py-3 mt-2 border border-dashed border-zinc-800 rounded-xl text-[10px] font-black text-zinc-600 hover:border-emerald-500/50 hover:text-emerald-500 transition-all uppercase tracking-widest flex items-center justify-center gap-2"
+                  >
+                    <Plus size={14} /> Add Extra Set
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* MUSCLE INFO MODAL (WITH IMAGE) */}
+      <AnimatePresence>
+        {selectedMuscles && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] flex items-center justify-center p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }} 
+              animate={{ scale: 1, y: 0 }} 
+              className="glass-card w-full max-w-xs p-8 text-center border-emerald-500/30"
+            >
+              {/* Image Path logic: matches /public/muscles/chest.png etc */}
+              <img 
+                src={`/muscles/${selectedMuscles.list.split(',')[0].toLowerCase().trim()}.png`}
+                alt="Muscle Map"
+                className="w-full h-48 object-contain mb-6 mx-auto"
+                onError={(e) => {
+                   e.target.onerror = null;
+                   e.target.src = "https://www.svgrepo.com/show/447034/muscle.svg";
+                }}
+              />
+
+              <h2 className="text-xl font-black italic uppercase text-white mb-2">{selectedMuscles.name}</h2>
+              <p className="text-emerald-500 text-[10px] font-black uppercase tracking-[0.2em] mb-4">Primary Drivers</p>
+              <p className="text-zinc-300 text-sm italic font-bold mb-8 bg-white/5 p-4 rounded-xl border border-white/5">
+                {selectedMuscles.list}
+              </p>
+              <button 
+                onClick={() => setSelectedMuscles(null)} 
+                className="w-full py-4 bg-emerald-500 text-emerald-950 rounded-xl text-[10px] font-black uppercase shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+              >
+                Back to Training
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
