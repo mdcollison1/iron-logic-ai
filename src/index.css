@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    /* Explicitly sets background to near-black and text to off-white */
+    @apply bg-zinc-950 text-zinc-100 antialiased;
+    background-color: #09090b; 
+    color: #f4f4f5;
+  }
+}
+
+@layer components {
+  .glass-card {
+    /* Adding a subtle white tint to the background so cards stand out from the floor */
+    @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl shadow-2xl;
+  }
+}
