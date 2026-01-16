@@ -36,18 +36,21 @@ function App() {
   }, []);
 
 const fetchExistingPlan = async (userId) => {
-  const { data, error } = await supabase
-    .from('workout_plans')
-    .select('*')
-    .eq('user_id', userId)
-    .order('week', { ascending: true })
-    .order('day_number', { ascending: true });
-  
-  // Only update state if we actually got an array back
-  if (data && Array.isArray(data)) {
-    setGeneratedPlan(data);
-  } else if (error) {
-    console.error("Fetch error:", error.message);
+  try {
+    const { data, error } = await supabase
+      .from('workout_plans')
+      .select('*')
+      .eq('user_id', userId);
+    
+    // Check if data actually exists before setting it
+    if (data && data.length > 0) {
+      setGeneratedPlan(data);
+    } else {
+      setGeneratedPlan([]); // Keep it empty but defined
+    }
+  } catch (err) {
+    console.error("Fetch failed:", err);
+    setGeneratedPlan([]);
   }
 };
 
