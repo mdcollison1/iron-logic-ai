@@ -35,16 +35,21 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchExistingPlan = async (userId) => {
-    const { data } = await supabase
-      .from('workout_plans')
-      .select('*')
-      .eq('user_id', userId);
-    
-    if (data && data.length > 0) {
-      setGeneratedPlan(data);
-    }
-  };
+const fetchExistingPlan = async (userId) => {
+  const { data, error } = await supabase
+    .from('workout_plans')
+    .select('*')
+    .eq('user_id', userId)
+    .order('week', { ascending: true })
+    .order('day_number', { ascending: true });
+  
+  // Only update state if we actually got an array back
+  if (data && Array.isArray(data)) {
+    setGeneratedPlan(data);
+  } else if (error) {
+    console.error("Fetch error:", error.message);
+  }
+};
 
   // NEW: PASSWORD-BASED LOGIN LOGIC
   // This bypasses the iPhone "Magic Link" loop frustration.
