@@ -3,13 +3,13 @@ import { supabase } from './supabaseClient';
 import WorkoutDashboard from './components/WorkoutDashboard';
 import ProgressChart from './components/ProgressChart';
 import { generate12WeekPlan } from './utils/programLogic';
-import { Dumbbell, Rocket, Trash2, LogOut, TrendingUp, Mail, User } from 'lucide-react';
+import { Dumbbell, Rocket, Trash2, LogOut, TrendingUp, Lock, User } from 'lucide-react';
 
 function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
-  const [firstName, setFirstName] = useState(''); // Added First Name state
+  const [firstName, setFirstName] = useState('');
   const [generatedPlan, setGeneratedPlan] = useState([]);
   
   const [maxes, setMaxes] = useState({
@@ -19,28 +19,21 @@ function App() {
     overheadpress: ''
   });
 
-useEffect(() => {
-  // 1. Check for an existing session
-  supabase.auth.getSession().then(({ data: { session } }) => {
-    if (session) {
+  useEffect(() => {
+    // Check for existing session on load
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      fetchExistingPlan(session.user.id);
-    }
-  });
+      if (session) fetchExistingPlan(session.user.id);
+    });
 
-  // 2. Listen for the "Magic Link" return
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-    if (session) {
+    // Listen for auth state changes (login/logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      fetchExistingPlan(session.user.id);
-      
-      // OPTIONAL: If they just logged in, clear the URL garbage for a clean UI
-      window.history.replaceState({}, document.title, "/");
-    }
-  });
+      if (session) fetchExistingPlan(session.user.id);
+    });
 
-  return () => subscription.unsubscribe();
-}, []);
+    return () => subscription.unsubscribe();
+  }, []);
 
   const fetchExistingPlan = async (userId) => {
     const { data } = await supabase
@@ -53,25 +46,40 @@ useEffect(() => {
     }
   };
 
-  // UPDATED: Logic to save First Name into metadata
+  // NEW: PASSWORD-BASED LOGIN LOGIC
+  // This bypasses the iPhone "Magic Link" loop frustration.
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({ 
+
+    // We use a default password to keep the UI simple for you
+    const defaultPassword = 'IronLogicUser123!';
+
+    // 1. Try to Sign In
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
       email,
-      options: {
-        data: {
-          first_name: firstName // Saves "First Name" into Supabase Auth
-        },
-        emailRedirectTo: window.location.origin,
-      }
+      password: defaultPassword,
     });
 
-    if (error) {
-      alert(error.message);
-    } else {
-      alert(`Protocol initiated, ${firstName}! Check your email for the magic link.`);
+    // 2. If user doesn't exist, Sign them Up automatically
+    if (signInError && signInError.message.includes("Invalid login credentials")) {
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password: defaultPassword,
+        options: {
+          data: { first_name: firstName }
+        }
+      });
+
+      if (signUpError) {
+        alert("Setup Error: " + signUpError.message);
+      } else {
+        alert(`Welcome aboard, ${firstName}! Account initialized.`);
+      }
+    } else if (signInError) {
+      alert("Login Error: " + signInError.message);
     }
+
     setLoading(false);
   };
 
@@ -104,25 +112,25 @@ useEffect(() => {
     }
   };
 
+  // --- LOGIN SCREEN ---
   if (!session) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-6 text-white text-center">
         <div className="glass-card p-8 w-full max-w-md border-emerald-500/20 shadow-2xl">
           <Dumbbell className="mx-auto mb-4 text-emerald-500" size={48} />
-          <h1 className="text-3xl font-black italic uppercase mb-2 tracking-tighter">Iron Logic AI</h1>
-          <p className="text-zinc-500 mb-8 text-xs uppercase tracking-widest font-bold">Training Protocol Engine</p>
+          <h1 className="text-3xl font-black italic uppercase mb-2 tracking-tighter text-white">Iron Logic AI</h1>
+          <p className="text-zinc-500 mb-8 text-xs uppercase tracking-[0.2em] font-black">Initialization Protocol</p>
           
           <form onSubmit={handleLogin} className="space-y-4">
-            {/* ADDED: First Name Input Field */}
             <div className="text-left">
-              <label className="text-[10px] uppercase font-black text-zinc-500 ml-1">First Name</label>
+              <label className="text-[10px] uppercase font-black text-zinc-600 ml-1">First Name</label>
               <div className="relative mt-1">
-                <User className="absolute left-3 top-3 text-zinc-600" size={18} />
+                <User className="absolute left-3 top-3.5 text-zinc-600" size={16} />
                 <input 
                   type="text" 
-                  placeholder="Your Name"
+                  placeholder="NAME"
                   required
-                  className="w-full bg-black/40 border border-white/10 rounded-xl p-3 pl-10 text-white focus:border-emerald-500/50 outline-none transition-all"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl p-3 pl-10 text-white focus:border-emerald-500/50 outline-none transition-all placeholder:text-zinc-800 font-bold"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                 />
@@ -130,22 +138,23 @@ useEffect(() => {
             </div>
 
             <div className="text-left">
-              <label className="text-[10px] uppercase font-black text-zinc-500 ml-1">Email Address</label>
+              <label className="text-[10px] uppercase font-black text-zinc-600 ml-1">Email Address</label>
               <input 
                 type="email" 
-                placeholder="you@example.com"
+                placeholder="EMAIL"
                 required
-                className="w-full bg-black/40 border border-white/10 rounded-xl p-3 mt-1 text-white focus:border-emerald-500/50 outline-none transition-all"
+                className="w-full bg-black/40 border border-white/10 rounded-xl p-3 mt-1 text-white focus:border-emerald-500/50 outline-none transition-all placeholder:text-zinc-800 font-bold"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
+
             <button 
               type="submit" 
               disabled={loading}
-              className="neon-button w-full flex items-center justify-center gap-2"
+              className="neon-button w-full flex items-center justify-center gap-2 py-4 mt-4"
             >
-              <Mail size={18} /> {loading ? "Sending..." : "Start Training"}
+              <Lock size={18} /> {loading ? "ESTABLISHING..." : "START TRAINING"}
             </button>
           </form>
         </div>
@@ -153,7 +162,7 @@ useEffect(() => {
     );
   }
 
-  // USER NAME FOR THE HEADER
+  // --- DASHBOARD SCREEN ---
   const userName = session?.user?.user_metadata?.first_name || 'Athlete';
 
   return (
@@ -169,8 +178,8 @@ useEffect(() => {
 
       <main className="max-w-md mx-auto py-8 px-6">
         {generatedPlan.length === 0 && (
-          <div className="glass-card p-6 mb-8 border-emerald-500/10">
-            <h2 className="text-xl font-black italic uppercase mb-4 flex items-center gap-2">
+          <div className="glass-card p-6 mb-8 border-emerald-500/10 shadow-xl">
+            <h2 className="text-xl font-black italic uppercase mb-4 flex items-center gap-2 text-white">
               <Rocket size={20} className="text-emerald-500" /> 
               Initial Protocol
             </h2>
@@ -183,15 +192,15 @@ useEffect(() => {
                   </label>
                   <input 
                     type="number" placeholder="0 lbs"
-                    className="w-full bg-black/40 border border-white/10 rounded-xl p-3 mt-1 text-emerald-400 font-mono focus:border-emerald-500/50 outline-none transition-all"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl p-3 mt-1 text-emerald-400 font-mono focus:border-emerald-500/50 outline-none transition-all text-xl"
                     value={maxes[lift]}
                     onChange={(e) => setMaxes({...maxes, [lift]: e.target.value})} 
                   />
                 </div>
               ))}
 
-              <button onClick={handleGenerate} disabled={loading} className="neon-button w-full mt-4 disabled:opacity-50">
-                {loading ? "Calculating..." : "Generate 12-Week Plan"}
+              <button onClick={handleGenerate} disabled={loading} className="neon-button w-full mt-6 py-4 disabled:opacity-50">
+                {loading ? "CALCULATING..." : "GENERATE 12-WEEK PLAN"}
               </button>
             </div>
           </div>
@@ -202,9 +211,9 @@ useEffect(() => {
             <ProgressChart plan={generatedPlan} />
             <button 
               onClick={handleReset}
-              className="mt-4 flex items-center justify-center gap-2 text-[10px] uppercase font-black text-red-500/50 hover:text-red-500 transition-colors mx-auto tracking-widest"
+              className="mt-6 flex items-center justify-center gap-2 text-[10px] uppercase font-black text-red-500/40 hover:text-red-500 transition-colors mx-auto tracking-[0.2em]"
             >
-              <Trash2 size={12} /> Reset Data and Start Over
+              <Trash2 size={12} /> Reset Protocol and Start Over
             </button>
           </div>
         )}
