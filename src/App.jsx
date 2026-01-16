@@ -19,17 +19,28 @@ function App() {
     overheadpress: ''
   });
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+useEffect(() => {
+  // 1. Check for an existing session
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session) {
       setSession(session);
-      if (session) fetchExistingPlan(session.user.id);
-    });
+      fetchExistingPlan(session.user.id);
+    }
+  });
 
-    supabase.auth.onAuthStateChange((_event, session) => {
+  // 2. Listen for the "Magic Link" return
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    if (session) {
       setSession(session);
-      if (session) fetchExistingPlan(session.user.id);
-    });
-  }, []);
+      fetchExistingPlan(session.user.id);
+      
+      // OPTIONAL: If they just logged in, clear the URL garbage for a clean UI
+      window.history.replaceState({}, document.title, "/");
+    }
+  });
+
+  return () => subscription.unsubscribe();
+}, []);
 
   const fetchExistingPlan = async (userId) => {
     const { data } = await supabase
